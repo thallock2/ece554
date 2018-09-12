@@ -60,11 +60,11 @@ initial begin
 		write = 1'h1;
 		#10;
 		dataIn = dataIn + 8'h01;
-		$display("full is %b", {1'b0, DUT.back} - {1'b0, DUT.front});
 	end
 	write = 1'h0;
 
 	$stop();
 end
+
 
 endmodule
