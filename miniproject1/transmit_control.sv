@@ -1,7 +1,7 @@
 module transmit_control(
 	input clk,
+	input rst_n,
 	input baud,
-	input transmit_enable,
 	input [1:0] ioaddr,
 	output txd,
 	output tbr,
@@ -12,9 +12,9 @@ module transmit_control(
 
 	// state machine
 	typedef enum{
-		IDLE = 0;
-		TRANSMIT = 1;
-	}state_t
+		IDLE = 0,
+		TRANSMIT = 1
+	} state_t;
 	state_t state, next_state;
 
 	wire stop, start;
@@ -29,7 +29,7 @@ module transmit_control(
 	// NEXT STATE LOGIC //
 	always@(*) begin
 		if(baud) begin
-			case(state) begin
+			case(state)
 				// wait to begin serially transmitting
 				IDLE: begin
 					if(start)
@@ -56,10 +56,8 @@ module transmit_control(
 	// SHIFT REGISTER //
 	wire[7:0] r_shift_out;
 	transmit_register shift(.rst_n(rst_n), .baud(baud), .start(start), .stop(stop), .txd(txd), .fifo_out(fifo_out));
-
-
-	// OUTPUT //
-	assign rda = r_buffer_full;
+	
+	assign tbr = state;
 
 endmodule
 
@@ -70,14 +68,14 @@ module timer(
 	);
 	reg[3:0] count;
 
-	always@(*)begin
-		if(reset || count == -1)
-			count <= 4'h07;
+	always@(baud)begin
+		if(reset | count == -1)
+			count <= 4'h7;
 		else
-			count < count - 1;
+			count <= count - 1;
 	end
 
-	assign timer_done = count == 4'h00;
+	assign timer_done = (count == 4'h0);
 
 endmodule
 
@@ -97,7 +95,7 @@ module transmit_shift(
 		else if(start)
 			hold <= fifo_out;
 		else
-			hold <= {0, hold[7:1]};
+			hold <= {1'b0, hold[7:1]};
 	end
 	
 	assign txd = hold[0];
