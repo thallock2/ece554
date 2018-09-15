@@ -14,18 +14,20 @@ module transmit_control(
 	// state machine
 	typedef enum{
 		IDLE = 0,
-		TRANSMIT = 1
+		LOAD1 = 1,
+		LOAD2 = 2,
+		TRANSMIT = 3
 	} state_t;
 	state_t state, next_state;
 
 	// Timer
 	reg[3:0] count; wire timer_done;
-	reg start;
-	always_ff @(posedge baud, negedge rst_n, start) begin
-		if (!rst_n | start)
-			 count <= 4'h8;
+	reg start, set_timer;
+	always_ff @(posedge baud, negedge rst_n, set_timer) begin
+		if (!rst_n | set_timer)
+			 count <= 4'ha;
 		else if (count == 4'h0)
-			 count <= 4'h8;
+			 count <= 4'ha;
 		else 
 			count <= count - 1'b1;
 	end
@@ -48,22 +50,28 @@ module transmit_control(
 	end
 
 	// NEXT STATE LOGIC //
-	always@(*) begin
+/*	always@(*) begin
 		start = 0;
 		fifo_read = 0;
 		if(baud) begin
 			case(state)
 				// wait to begin serially transmitting
 				IDLE: begin
+					fifo_read = 1;
 					if(~t_buffer_empty) begin
-						next_state = TRANSMIT;
-						start = 1'b1;
-						fifo_read = 1'b1;
+						next_state = LOAD1;
+						//start = 1'b1;
 					end
 					else
 						next_state = IDLE;
 				end
-				// transmit the data out
+				LOAD1: begin
+					next_state = LOAD2;
+					start = 1'b1;
+				end
+				LOAD2: begin
+					next_state = TRANSMIT;
+				end
 				TRANSMIT: begin
 					if(~timer_done) 
 						next_state = TRANSMIT;
@@ -73,7 +81,40 @@ module transmit_control(
 			endcase
 		end
 	end
-	
+*/
+
+	always@(*) begin
+		if(baud) begin
+			fifo_read = 0;
+			start = 0;
+			set_timer = 0;
+			case (state)
+				IDLE: begin
+					if(~t_buffer_empty) begin
+						next_state = LOAD1;
+						fifo_read = 1;
+					end
+					else
+						next_state = IDLE;
+				end
+				LOAD1: begin
+					next_state = LOAD2;
+					start = 1;
+				end
+				LOAD2: begin
+					next_state = TRANSMIT;
+					set_timer = 1;
+				end
+				TRANSMIT: begin
+					if(~timer_done)
+						next_state= TRANSMIT;
+					else
+						next_state = IDLE;
+				end
+			endcase
+		end
+	end
+
 	assign tbr = ~t_buffer_empty;
 
 endmodule
@@ -87,19 +128,19 @@ module transmit_shift(
 	input[7:0] fifo_out,
 	output txd
 	);
-	reg[7:0] hold;
+	reg[9:0] hold;
 	
 	always@(posedge clk, negedge rst_n)begin
 		if(~rst_n)
-			hold <= 8'h00;
-		else if (baud) begin
+			hold <= 10'd0;
+		else if(baud) begin
 			if(start)
-				hold <= fifo_out;
+				hold <= {1'b1, fifo_out, 1'b0};
+
 			else
-				hold <= {1'b0, hold[7:1]};
+				hold <= {{1'b0}, {hold[9:1]}};
 		end
 	end
-	
 	assign txd = hold[0];
 
 endmodule
