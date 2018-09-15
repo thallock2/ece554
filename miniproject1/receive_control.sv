@@ -7,8 +7,6 @@ module receive_control(
 	output rda,
 	output [7:0] bus_in
 	);
-	reg r_ready;
-	reg [7:0] rbuffer;
 
 	// STATE MACHINE //
 	typedef enum{
@@ -40,10 +38,10 @@ module receive_control(
 	end
 	
 	reg fifo_write;
-	reg get_next_bit;
 	// NEXT STATE LOGIC //
 	always@(*) begin
 		start = 0;
+		fifo_write = 0;
 		if(baud) begin
 			case(state)
 				// fill up the receive shift register
@@ -59,7 +57,6 @@ module receive_control(
 				RECEIVE: begin
 					if(~timer_done) 
 						next_state = RECEIVE;
-//						get_next_bit = 1'b1
 					else begin
 						next_state = IDLE;
 						fifo_write = 1'b1;
@@ -72,7 +69,7 @@ module receive_control(
  
 	// SHIFT REGISTER //
 	wire[7:0] r_shift_out;
-	shift_register shift(.start(), .clk(clk), .rst_n(rst_n), .baud(baud), .rxd(rxd), .r_shift_out(r_shift_out));
+	shift_register shift(.clk(clk), .rst_n(rst_n), .baud(baud), .rxd(rxd), .r_shift_out(r_shift_out));
 
 	// FIFO INSTANTIATION FOR RECEIVE BUFFER //
 	wire r_buffer_empty, r_buffer_full;
@@ -85,7 +82,7 @@ module receive_control(
 endmodule
 
 module shift_register(
-	input start,
+//	input start,
 	input clk,
 	input rst_n,
 	input baud,
@@ -100,9 +97,9 @@ module shift_register(
 		if (~rst_n)
 			hold <= 8'h00;
 		else if (baud) begin
-			if (start)
+			/*if (start)
 				hold <= 8'h00;
-			else
+			else*/
 				hold <= {hold[6:0], rxd};
 		end
 //	else
