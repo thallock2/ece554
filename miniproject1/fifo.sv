@@ -43,14 +43,14 @@ assign empty = (back == front);
 assign full = (back + 1'b1) == front;
  
 // dataOut
-assign dataOut = (front == 3'h0) ? spot7 :
-               (front == 3'h1) ? spot0 :
-               (front == 3'h2) ? spot1 :
-               (front == 3'h3) ? spot2 :
-               (front == 3'h4) ? spot3 :
-               (front == 3'h5) ? spot4 :
-               (front == 3'h6) ? spot5 :
-               spot6;
+assign dataOut = (front == 3'h0) ? spot0 :
+               (front == 3'h1) ? spot1 :
+               (front == 3'h2) ? spot2 :
+               (front == 3'h3) ? spot3 :
+               (front == 3'h4) ? spot4 :
+               (front == 3'h5) ? spot5 :
+               (front == 3'h6) ? spot6 :
+               spot7;
 
 //FIFO Data
 always_ff @(posedge clk, negedge rst_n) begin

@@ -17,7 +17,7 @@ reg [15:0] divisor, count;
 
 // Divisor Storage
 always_ff @(posedge clk, negedge rst_n) begin
-	if (!rst_n) divisor <= 16'h0145;
+	if (!rst_n) divisor <= 16'h1450;
 	else if (ioaddr == 2'b10) divisor[7:0] <= dataIn;
 	else if (ioaddr == 2'b11) divisor[15:8] <= dataIn;
 	else divisor <= divisor;

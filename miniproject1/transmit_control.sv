@@ -1,104 +1,104 @@
-module transmit_control(
-	input clk,
-	input rst_n,
-	input baud,
-	input [1:0] ioaddr,
-	output txd,
-	output tbr,
-	output [7:0] out_bus
-	);
-	reg r_ready;
-	reg [7:0] rbuffer;
+module transmit_control(TX, dataIn, TBR, baud, write, clk, rst_n, nextWord);
 
-	// state machine
-	typedef enum{
-		IDLE = 0,
-		TRANSMIT = 1
-	} state_t;
-	state_t state, next_state;
+// RS232 UART transmitter for ECE 554 miniproject 1
 
-	wire stop, start;
-	
-	always@(*) begin
-		if(!rst_n)
-			state <= IDLE;
-		else
-			state <= next_state;
-	end
+////////////////////////////////////////////////////////////////////////////////
 
-	// NEXT STATE LOGIC //
-	always@(*) begin
-		if(baud) begin
-			case(state)
-				// wait to begin serially transmitting
-				IDLE: begin
-					if(start)
-						next_state = TRANSMIT;
-					else
-						next_state = IDLE;
+// I/O
+input[7:0] dataIn;
+input baud, write, clk, rst_n;
+output TX, TBR;
+
+// Internal Sigs
+output wire[7:0] nextWord;
+wire empty, full;
+reg[9:0] shiftReg;
+reg [3:0] timer;
+reg readBuf, setTimer, tick, loadShift, shift;
+
+// debugging
+
+// State Type
+typedef enum reg[1:0] {IDLE, LOAD, TRANS} state_t;
+state_t state;
+state_t next_state;
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Shift Reg
+always @(posedge clk, negedge rst_n) begin
+	if (!rst_n) shiftReg <= 10'h111;
+	else if (loadShift) shiftReg <= {1'b1, nextWord, 1'b0};
+	else if (shift) shiftReg <= {1'b1, shiftReg[9:1]};
+	else shiftReg <= shiftReg;
+end
+
+// Timer
+always @(posedge clk, negedge rst_n) begin
+	if (!rst_n) timer <= 4'h0;
+	else if (setTimer) timer <= 4'ha;
+	else if (tick) timer <= timer - 1'b1;
+	else timer <= timer;
+end
+
+// FIFO
+fifo buffer(dataIn, nextWord, empty, full, readBuf, write, clk, rst_n);
+
+// TBR
+assign TBR = !full;
+
+// TX
+assign TX = shiftReg[0];
+
+// State Flops
+always @(posedge clk, negedge rst_n) begin
+	if (!rst_n) state <= IDLE;
+	else state <= next_state;
+end
+
+// State Logic
+always_comb begin
+	// Default Signals
+	readBuf = 1'b0;
+	setTimer = 1'b0;
+	loadShift = 1'b0;
+	tick = 1'b0;
+	shift = 1'b0;
+	next_state = IDLE;
+	// State Control
+	case (state)
+		IDLE: begin
+			if (baud) begin
+				if (!empty) begin
+					loadShift = 1'b1;
+					next_state = LOAD;
 				end
-				// transmit the data out
-				TRANSMIT: begin
-					if(start) 
-						next_state = TRANSMIT;
-					else
-						next_state = IDLE;
-				end
-			endcase
+				else next_state = IDLE;
+			end
+			else next_state = IDLE;
 		end
-	end
+		LOAD: begin
+			readBuf = 1'b1;
+			setTimer = 1'b1;
+			next_state = TRANS;
+		end
+		TRANS: begin
+			if (baud) begin
+				if (timer == 4'h0) begin
+					next_state = IDLE;
+				end
+				else begin
+					tick = 1'b1;
+					shift = 1'b1;
+					next_state = TRANS;
+				end
+			end
+			else next_state = TRANS;
+		end
+//		default: next_state = IDLE;
+	endcase
+end
 
-	// FIFO INSTANTIATION FOR TRANSMIT BUFFER //
-	wire t_buffer_empty, t_buffer_full;
-	wire[7:0] fifo_out;
-	fifo transmit_buffer(.dataIn(out_bus), .dataOut(fifo_out), .empty(t_buffer_empty), .full(t_buffer_full), .read(), .write(), .clk(clk), .rst_n(rst_n));
-
-	// SHIFT REGISTER //
-	wire[7:0] r_shift_out;
-	transmit_register shift(.rst_n(rst_n), .baud(baud), .start(start), .stop(stop), .txd(txd), .fifo_out(fifo_out));
-	
-	assign tbr = state;
-
-endmodule
-
-module timer(
-	input baud,
-	input reset,
-	output timer_done
-	);
-	reg[3:0] count;
-
-	always@(baud)begin
-		if(reset | count == -1)
-			count <= 4'h7;
-		else
-			count <= count - 1;
-	end
-
-	assign timer_done = (count == 4'h0);
-
-endmodule
-
-module transmit_shift(
-	input rst_n,
-	input baud,
-	input start,
-	input stop,
-	input[7:0] fifo_out,
-	output txd
-	);
-	reg[7:0] hold;
-	
-	always@(*)begin
-		if(!rst_n)
-			hold <= 8'h00;
-		else if(start)
-			hold <= fifo_out;
-		else
-			hold <= {1'b0, hold[7:1]};
-	end
-	
-	assign txd = hold[0];
 
 endmodule
 	

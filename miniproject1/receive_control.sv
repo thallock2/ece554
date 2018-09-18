@@ -1,99 +1,116 @@
-module receive_control(
-	input clk,
-	input rst_n,
-	input baud,
-	input [1:0] ioaddr,
-	input rxd,
-	output rda,
-	output [7:0] bus_in
-	);
-	reg r_ready;
-	reg [7:0] rbuffer;
+module recieve_control(RX, dataOut, RDA, baud, read, clk, rst_n);
 
-	// STATE MACHINE //
-	typedef enum{
-		FILL = 0,
-		RECEIVE = 1
-	}state_t;
-	state_t state, next_state;	
-	
-	// timer for state machine
-	//wire timer_done;
-	//timer timer(.rst(~rst_n), .baud(baud), .rxd(rxd), .timer_done(timer_done));
+// RS232 UART reciever for ECE 554 miniproject 1
 
-	// Timer
-	reg count;
-	always_ff @(posedge baud, negedge rst_n) begin
-		if (!rst_n) count <= 4'hA;
-		else if (count == 4'h0) count <= 4'hA;
-		else count <= count - 1'b1;
-	end
-	assign timer_done = (count == 4'h0);
+////////////////////////////////////////////////////////////////////////////////
 
-	always@(*) begin
-		if(!rst_n)
-			state <= FILL;
-		else
-			state <= next_state;
-	end
+// I/O
+output[7:0] dataOut;
+output RDA;
+input RX, baud, read, clk, rst_n;
 
-	// NEXT STATE LOGIC //
-	always@(*) begin
-		if(baud) begin
-			case(state)
-				// fill up the receive shift register
-				FILL: begin
-					if(~timer_done)
-						next_state = FILL;
-					else
-						next_state = RECEIVE;
+// debugging signals
+//output [8:0] shiftReg
+// wire rec_state
+//output [1:0] rec_state;
+// Internal Sigs
+wire[7:0] nextWord;
+wire empty, full;
+reg[8:0] shiftReg;
+reg [3:0] timer;
+reg writeBuf, setTimer, tick, loadShift, shift;
+
+// State Type
+typedef enum reg[1:0] {IDLE = 2'b11, REC = 2'b00} state_t;
+state_t state;
+state_t next_state;
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Shift Reg
+always @(posedge clk, negedge rst_n) begin
+	if (!rst_n) shiftReg <= 9'h000;
+	else if (loadShift) shiftReg <= 9'h000;
+	else if (shift) shiftReg <= {RX, shiftReg[8:1]};
+	else shiftReg <= shiftReg;
+end
+
+// Timer
+always @(posedge clk, negedge rst_n) begin
+	if (!rst_n) timer <= 4'h0;
+	else if (setTimer) timer <= 4'h9;
+	else if (tick) timer <= timer - 1'b1;
+	else timer <= timer;
+end
+
+// FIFO
+fifo buffer(nextWord, dataOut, empty, full, read, writeBuf, clk, rst_n);
+
+// RDA
+assign RDA = !empty;
+
+// nextWord
+assign nextWord = shiftReg[7:0];
+
+// State Flops
+always @(posedge clk, negedge rst_n) begin
+	if (!rst_n) state <= IDLE;
+	else state <= next_state;
+end
+
+// State Logic
+always_comb begin
+	// Default Signals
+	writeBuf = 1'b0;
+	setTimer = 1'b0;
+	loadShift = 1'b0;
+	tick = 1'b0;
+	shift = 1'b0;
+	next_state = IDLE;
+	// State Control
+	case (state)
+		IDLE: begin
+			if (baud) begin
+				if (!RX) begin
+					loadShift = 1'b1;
+					setTimer = 1'b1;
+					next_state = REC;
 				end
-				// receive the data into the databus
-				RECEIVE: begin
-					if(rxd) 
-						next_state = RECEIVE;
-					else
-						next_state = FILL;
-				end
-			endcase
+				else next_state = IDLE;
+			end
+			else next_state = IDLE;
 		end
-	end
-	
- 
-	// SHIFT REGISTER //
-	wire[7:0] r_shift_out;
-	shift_register shift(.rst_n(rst_n), .baud(baud), .start(start), .stop(stop), .rxd(rxd), .r_shift_out(r_shift_out));
+		REC: begin
+			if (baud) begin
+				if (timer == 4'h0) begin
+					next_state = IDLE;
+					writeBuf = 1'b1;
+				end
+				else begin
+					tick = 1'b1;
+					shift = 1'b1;
+					next_state = REC;
+				end
+			end
+			else next_state = REC;
+		end
+//		default: next_state = IDLE;
+	endcase
+end
 
-	// FIFO INSTANTIATION FOR RECEIVE BUFFER //
-	wire r_buffer_empty, r_buffer_full;
-	fifo receive_buffer(.dataIn(r_shift_out), .dataOut(bus_in), .empty(r_buffer_empty), .full(r_buffer_full), .read(), .write(), .clk(clk), .rst_n(rst_n));
 
-	// OUTPUT //
-	assign rda = ~r_buffer_empty;
-	
+/*// debugging signal
+assign rec_state = state;
 
+output reg flop;
+always @(posedge clk, negedge rst_n) begin 
+	if (~rst_n)
+			flop <= 0;
+	else if(state == REC)
+			flop <= 1;
+	else
+			flop <= flop;
+end
+*/
 endmodule
-
-module shift_register(
-	input rst_n,
-	input baud,
-	input start,
-	input stop,
-	input rxd,
-	output[7:0] r_shift_out
-	);
-
-	reg[7:0] hold;
-
-	// SHIFT IN NEW RXD VALUE //
-	always_ff @(posedge baud, negedge rst_n) begin
-		if (!rst_n | start)
-			hold <= 8'h00;
-		else
-			hold <= {hold[6:0], rxd};
-	end
 	
-	assign r_shift_out = stop ? hold : 8'h00;
-
-endmodule
-
